@@ -6,11 +6,23 @@ Supabazarr sauvegarde quotidiennement votre bibliothèque de films/séries et vo
 
 ## Fonctionnalités
 
-- **Sauvegarde automatique quotidienne** (à 3h du matin)
+- **Interface web** sur le port 8383 pour configurer et monitorer
+- **Sauvegarde automatique quotidienne** (à 3h du matin, configurable)
 - **Multi-services** : Radarr, Sonarr, Prowlarr, Jellyfin, Decypharr, Bazarr
 - **Multi-devices** : Chaque Raspberry Pi a son propre espace de stockage
+- **Sauvegarde des clés API** : AllDebrid, YGG, clés des services
 - **Historique** : Conserve 30 jours d'historique de backups
 - **Léger** : Utilise moins de 128MB de RAM
+
+## Interface Web
+
+Accédez à l'interface de configuration sur `http://<ip-du-pi>:8383`
+
+![Supabazarr Interface](docs/interface.png)
+
+- **Statut** : Vue d'ensemble du dernier backup
+- **Configuration** : Configurer les credentials Supabase
+- **Historique** : Voir les 20 derniers backups
 
 ## Données sauvegardées
 

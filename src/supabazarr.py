@@ -838,17 +838,35 @@ def main():
     parser = argparse.ArgumentParser(description='Supabazarr - Backup service for JellySetup')
     parser.add_argument('--once', action='store_true', help='Run backup once and exit')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser.add_argument('--web-only', action='store_true', help='Run only the web interface')
+    parser.add_argument('--no-web', action='store_true', help='Disable web interface')
+    parser.add_argument('--port', type=int, default=8383, help='Web interface port (default: 8383)')
     args = parser.parse_args()
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # Mode web seulement
+    if args.web_only:
+        logger.info(f"Starting web interface on port {args.port}...")
+        from web import run_web_server
+        run_web_server(port=args.port)
+        return
+
     # Charger la configuration
     config = get_config()
 
+    # Vérifier si credentials configurés (sinon juste lancer le web)
     if not config.supabase_url or not config.supabase_key:
-        logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables are required")
-        sys.exit(1)
+        logger.warning("SUPABASE_URL and SUPABASE_SERVICE_KEY not configured")
+        logger.info("Starting web interface for configuration...")
+        if not args.no_web:
+            from web import run_web_server
+            run_web_server(port=args.port)
+        else:
+            logger.error("No credentials and --no-web specified. Exiting.")
+            sys.exit(1)
+        return
 
     # Créer le service de backup
     backup = SupabazarrBackup(config)
@@ -858,18 +876,28 @@ def main():
         results = backup.run_backup()
         sys.exit(0 if results['status'] == 'success' else 1)
     else:
+        # Démarrer le serveur web dans un thread séparé
+        if not args.no_web:
+            import threading
+            from web import run_web_server
+            web_thread = threading.Thread(target=run_web_server, kwargs={'port': args.port}, daemon=True)
+            web_thread.start()
+            logger.info(f"Web interface started on port {args.port}")
+
         # Mode daemon avec cron interne
         import schedule
         import time
 
-        # Backup quotidien à 3h du matin
-        schedule.every().day.at("03:00").do(backup.run_backup)
+        # Heure de backup configurable
+        backup_hour = os.environ.get('BACKUP_HOUR', '03:00')
+        schedule.every().day.at(backup_hour).do(backup.run_backup)
 
         # Premier backup au démarrage
         logger.info("Running initial backup...")
         backup.run_backup()
 
-        logger.info("Supabazarr daemon started. Next backup at 03:00")
+        logger.info(f"Supabazarr daemon started. Next backup at {backup_hour}")
+        logger.info(f"Web interface: http://localhost:{args.port}")
         while True:
             schedule.run_pending()
             time.sleep(60)

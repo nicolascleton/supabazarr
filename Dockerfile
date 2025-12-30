@@ -2,11 +2,12 @@ FROM python:3.11-slim
 
 LABEL maintainer="JellySetup"
 LABEL description="Supabazarr - Backup service for JellySetup media stack"
-LABEL version="1.0.0"
+LABEL version="1.1.0"
 
 # Installer les dépendances système
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Créer l'utilisateur non-root
@@ -31,13 +32,15 @@ RUN chmod +x ./src/supabazarr.py
 ENV PYTHONUNBUFFERED=1
 ENV MEDIA_STACK_PATH=/media-stack
 ENV TZ=Europe/Paris
+ENV BACKUP_HOUR=03:00
 
-# Santé du container
+# Port pour l'interface web
+EXPOSE 8383
+
+# Santé du container (vérifie l'interface web)
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import os; exit(0 if os.path.exists('/etc/supabazarr/device_uuid') else 1)"
+    CMD curl -f http://localhost:8383/api/status || exit 1
 
-# Exécuter en tant que supabazarr (on changera pour root si nécessaire pour lire les DBs)
-# USER supabazarr
-
+# Exécuter en tant que root pour lire les DBs des autres services
 ENTRYPOINT ["python", "src/supabazarr.py"]
 CMD []

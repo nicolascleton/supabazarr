@@ -5,19 +5,22 @@ services:
     image: ghcr.io/nicolascleton/supabazarr:latest
     container_name: supabazarr
     restart: unless-stopped
+    ports:
+      - 8383:8383
     environment:
       - TZ=Europe/Paris
       - PUID=1000
       - PGID=1000
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY:-}
       - DEVICE_UUID=${DEVICE_UUID:-}
       - HOSTNAME=${HOSTNAME:-jellypi}
       - MEDIA_STACK_PATH=/media-stack
+      - BACKUP_HOUR=${BACKUP_HOUR:-03:00}
     volumes:
       # Monter le dossier media-stack en lecture seule
       - ./:/media-stack:ro
-      # Persister l'UUID du device
+      # Persister l'UUID et la config
       - supabazarr_data:/etc/supabazarr
       # Logs
       - ./logs/supabazarr:/var/log/supabazarr
@@ -32,7 +35,7 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/etc/supabazarr/device_uuid') else 1)"]
+      test: ["CMD", "curl", "-f", "http://localhost:8383/api/status"]
       interval: 60s
       timeout: 10s
       retries: 3
