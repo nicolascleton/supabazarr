@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supabazarr - {{ hostname }}</title>
+    <title>Supabazarr - {{ pi_name }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -13,7 +13,7 @@
             min-height: 100vh;
             padding: 20px;
         }
-        .container { max-width: 800px; margin: 0 auto; }
+        .container { max-width: 900px; margin: 0 auto; }
         header {
             text-align: center;
             padding: 30px 0;
@@ -27,14 +27,20 @@
             -webkit-text-fill-color: transparent;
             margin-bottom: 10px;
         }
-        .hostname {
+        .pi-info {
             color: #888;
-            font-size: 1.1rem;
+            font-size: 1rem;
+        }
+        .pi-info code {
+            background: rgba(0,217,255,0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            color: #00d9ff;
         }
         .status-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
             margin-bottom: 30px;
         }
         .status-card {
@@ -45,49 +51,62 @@
         }
         .status-card h3 {
             color: #888;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             text-transform: uppercase;
             margin-bottom: 8px;
         }
         .status-card .value {
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             font-weight: 600;
         }
         .status-card .value.success { color: #00ff88; }
         .status-card .value.warning { color: #ffaa00; }
         .status-card .value.error { color: #ff4444; }
-        .services {
+        .status-card .sub { color: #666; font-size: 0.8rem; margin-top: 4px; }
+
+        .section {
             background: rgba(255,255,255,0.05);
             border-radius: 12px;
             padding: 20px;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        .services h2 {
+        .section h2 {
             margin-bottom: 15px;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
+        .section h2 span { font-size: 1.3rem; }
+
         .service-list {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
             gap: 10px;
         }
         .service-item {
             background: rgba(0,217,255,0.1);
             border: 1px solid rgba(0,217,255,0.3);
             border-radius: 8px;
-            padding: 10px 15px;
-            font-size: 0.9rem;
-        }
-        .actions {
+            padding: 10px 12px;
+            font-size: 0.85rem;
             text-align: center;
-            padding: 20px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 30px 0;
         }
         button {
             background: linear-gradient(90deg, #00d9ff, #00ff88);
             color: #1a1a2e;
             border: none;
-            padding: 12px 30px;
-            font-size: 1rem;
+            padding: 12px 25px;
+            font-size: 0.95rem;
             font-weight: 600;
             border-radius: 8px;
             cursor: pointer;
@@ -102,6 +121,15 @@
             cursor: not-allowed;
             transform: none;
         }
+        button.secondary {
+            background: rgba(255,255,255,0.1);
+            color: #e0e0e0;
+        }
+        button.secondary:hover {
+            background: rgba(255,255,255,0.2);
+            box-shadow: none;
+        }
+
         .footer {
             text-align: center;
             padding: 20px;
@@ -109,49 +137,103 @@
             font-size: 0.85rem;
         }
         .footer a { color: #00d9ff; text-decoration: none; }
-        #backup-status {
-            margin-top: 15px;
-            padding: 10px;
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
             border-radius: 8px;
-            display: none;
+            font-weight: 500;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+            z-index: 1000;
         }
-        #backup-status.show { display: block; }
-        #backup-status.success { background: rgba(0,255,136,0.2); color: #00ff88; }
-        #backup-status.running { background: rgba(0,217,255,0.2); color: #00d9ff; }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .toast.success { background: rgba(0,255,136,0.9); color: #1a1a2e; }
+        .toast.running { background: rgba(0,217,255,0.9); color: #1a1a2e; }
+        .toast.error { background: rgba(255,68,68,0.9); color: #fff; }
+
+        .media-preview {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .media-item {
+            aspect-ratio: 2/3;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .media-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .media-item .placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #444;
+            font-size: 2rem;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🗄️ Supabazarr</h1>
-            <div class="hostname">{{ hostname }}</div>
+            <h1>Supabazarr</h1>
+            <div class="pi-info">
+                <strong>{{ pi_name }}</strong> &bull; Schema: <code>{{ schema_name }}</code>
+            </div>
         </header>
 
         <div class="status-grid">
             <div class="status-card">
                 <h3>Supabase</h3>
                 <div class="value {% if supabase_configured %}success{% else %}error{% endif %}">
-                    {% if supabase_configured %}Connected{% else %}Not Configured{% endif %}
+                    {% if supabase_configured %}Connected{% else %}Not Set{% endif %}
+                </div>
+            </div>
+            <div class="status-card">
+                <h3>Jellyfin</h3>
+                <div class="value {% if jellyfin_configured %}success{% else %}warning{% endif %}">
+                    {% if jellyfin_configured %}Connected{% else %}Not Set{% endif %}
                 </div>
             </div>
             <div class="status-card">
                 <h3>Last Backup</h3>
                 <div class="value {% if last_backup != 'Never' %}success{% else %}warning{% endif %}">
-                    {{ last_backup }}
+                    {{ last_backup_status }}
                 </div>
+                <div class="sub">{{ last_backup }}</div>
             </div>
             <div class="status-card">
-                <h3>Status</h3>
-                <div class="value success">{{ last_backup_status }}</div>
+                <h3>Media Sync</h3>
+                <div class="value {% if last_media_sync != 'Never' %}success{% else %}warning{% endif %}">
+                    {{ last_media_sync_status }}
+                </div>
+                <div class="sub">{{ last_media_sync }}</div>
             </div>
             <div class="status-card">
-                <h3>Interval</h3>
-                <div class="value">Every {{ backup_interval }}h</div>
+                <h3>Backup Interval</h3>
+                <div class="value">{{ backup_interval }}h</div>
+            </div>
+            <div class="status-card">
+                <h3>Sync Interval</h3>
+                <div class="value">{{ media_sync_interval }}min</div>
             </div>
         </div>
 
-        <div class="services">
-            <h2>📦 Services Monitored</h2>
+        <div class="section">
+            <h2><span>📦</span> Services Monitored</h2>
             <div class="service-list">
                 {% for service in services %}
                 <div class="service-item">{{ service.name }}</div>
@@ -159,56 +241,111 @@
             </div>
         </div>
 
+        <div class="section">
+            <h2><span>🎬</span> Media Catalog</h2>
+            <p style="color: #888; font-size: 0.9rem;">
+                Films et series synchronises depuis Jellyfin vers Supabase.
+            </p>
+            <div class="media-preview" id="media-preview">
+                <!-- Media items loaded via JS -->
+            </div>
+        </div>
+
         <div class="actions">
             <button id="backup-btn" onclick="triggerBackup()">
-                🚀 Run Backup Now
+                Run Backup Now
             </button>
-            <div id="backup-status"></div>
+            <button id="sync-btn" class="secondary" onclick="triggerMediaSync()">
+                Sync Media Now
+            </button>
         </div>
 
         <div class="footer">
-            {% if installation_id %}
-            <p>Installation ID: <code>{{ installation_id[:8] }}...</code></p>
-            {% endif %}
             <p>Part of <a href="https://github.com/nicolascleton/jellysetup">JellySetup</a> Media Stack</p>
         </div>
     </div>
 
+    <div id="toast" class="toast"></div>
+
     <script>
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show ' + type;
+            setTimeout(() => toast.className = 'toast', 3000);
+        }
+
         async function triggerBackup() {
             const btn = document.getElementById('backup-btn');
-            const status = document.getElementById('backup-status');
-
             btn.disabled = true;
-            btn.textContent = '⏳ Running...';
-            status.className = 'running show';
-            status.textContent = 'Backup in progress...';
+            btn.textContent = 'Running...';
+            showToast('Backup started...', 'running');
 
             try {
-                const response = await fetch('/api/backup', { method: 'POST' });
-                const data = await response.json();
-
-                status.className = 'success show';
-                status.textContent = '✅ Backup started! Refresh page in a minute to see results.';
+                await fetch('/api/backup', { method: 'POST' });
+                showToast('Backup started! Refresh in a minute.', 'success');
             } catch (error) {
-                status.className = 'error show';
-                status.textContent = '❌ Error: ' + error.message;
+                showToast('Error: ' + error.message, 'error');
             }
 
             setTimeout(() => {
                 btn.disabled = false;
-                btn.textContent = '🚀 Run Backup Now';
+                btn.textContent = 'Run Backup Now';
             }, 5000);
         }
 
-        // Auto-refresh status every 30 seconds
-        setInterval(async () => {
+        async function triggerMediaSync() {
+            const btn = document.getElementById('sync-btn');
+            btn.disabled = true;
+            btn.textContent = 'Syncing...';
+            showToast('Media sync started...', 'running');
+
             try {
-                const response = await fetch('/api/status');
-                const data = await response.json();
-                // Could update UI here
-            } catch (e) {}
-        }, 30000);
+                await fetch('/api/media-sync', { method: 'POST' });
+                showToast('Media sync started! This may take a few minutes.', 'success');
+            } catch (error) {
+                showToast('Error: ' + error.message, 'error');
+            }
+
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = 'Sync Media Now';
+            }, 5000);
+        }
+
+        async function loadMediaPreview() {
+            try {
+                const response = await fetch('/api/media?limit=12&type=movie');
+                if (response.ok) {
+                    const media = await response.json();
+                    const container = document.getElementById('media-preview');
+
+                    if (media.length === 0) {
+                        container.innerHTML = '<p style="color: #666; grid-column: 1/-1;">No media synced yet. Click "Sync Media Now" to start.</p>';
+                        return;
+                    }
+
+                    container.innerHTML = media.map(item => `
+                        <div class="media-item" title="${item.title} (${item.year || '?'})">
+                            ${item.poster_url
+                                ? `<img src="${item.poster_url}" alt="${item.title}" loading="lazy">`
+                                : `<div class="placeholder">🎬</div>`
+                            }
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error('Failed to load media preview:', e);
+            }
+        }
+
+        // Load media on page load
+        loadMediaPreview();
+
+        // Auto-refresh every 60 seconds
+        setInterval(() => {
+            loadMediaPreview();
+        }, 60000);
     </script>
 </body>
 </html>
