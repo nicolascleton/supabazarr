@@ -671,6 +671,103 @@ class SupabazarrBackup:
 
         return len(configs)
 
+    def backup_setup_credentials(self):
+        """Sauvegarde les clés API du setup initial"""
+        logger.info("Backing up setup credentials (API keys)...")
+
+        credentials = {
+            'device_id': self.device_id,
+            'updated_at': datetime.utcnow().isoformat()
+        }
+
+        # 1. Clés API des services *arr (depuis leurs config.xml)
+        # Radarr API Key
+        radarr_config_path = Path(self.config.radarr_path) / "config.xml"
+        if radarr_config_path.exists():
+            try:
+                tree = ET.parse(str(radarr_config_path))
+                api_key = tree.find('.//ApiKey')
+                if api_key is not None:
+                    credentials['radarr_api_key'] = api_key.text
+            except Exception as e:
+                logger.warning(f"Could not read Radarr API key: {e}")
+
+        # Sonarr API Key
+        sonarr_config_path = Path(self.config.sonarr_path) / "config.xml"
+        if sonarr_config_path.exists():
+            try:
+                tree = ET.parse(str(sonarr_config_path))
+                api_key = tree.find('.//ApiKey')
+                if api_key is not None:
+                    credentials['sonarr_api_key'] = api_key.text
+            except Exception as e:
+                logger.warning(f"Could not read Sonarr API key: {e}")
+
+        # Prowlarr API Key
+        prowlarr_config_path = Path(self.config.prowlarr_path) / "config.xml"
+        if prowlarr_config_path.exists():
+            try:
+                tree = ET.parse(str(prowlarr_config_path))
+                api_key = tree.find('.//ApiKey')
+                if api_key is not None:
+                    credentials['prowlarr_api_key'] = api_key.text
+            except Exception as e:
+                logger.warning(f"Could not read Prowlarr API key: {e}")
+
+        # 2. AllDebrid API Key (depuis decypharr config)
+        decypharr_config_path = Path(self.config.decypharr_path) / "config.json"
+        if decypharr_config_path.exists():
+            try:
+                config = json.loads(decypharr_config_path.read_text())
+                if 'debrids' in config and len(config['debrids']) > 0:
+                    debrid = config['debrids'][0]
+                    if 'api_key' in debrid:
+                        credentials['alldebrid_api_key'] = debrid['api_key']
+            except Exception as e:
+                logger.warning(f"Could not read AllDebrid API key: {e}")
+
+        # 3. YGG Passkey (depuis Prowlarr indexers)
+        prowlarr_db_path = Path(self.config.prowlarr_path) / "prowlarr.db"
+        if prowlarr_db_path.exists():
+            try:
+                conn = sqlite3.connect(str(prowlarr_db_path))
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT Settings FROM Indexers
+                    WHERE Name LIKE '%YGG%' OR Implementation LIKE '%yggtorrent%'
+                    LIMIT 1
+                """)
+                row = cursor.fetchone()
+                if row and row[0]:
+                    try:
+                        settings = json.loads(row[0])
+                        if 'passkey' in settings:
+                            credentials['ygg_passkey'] = settings['passkey']
+                    except:
+                        pass
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Could not read YGG passkey: {e}")
+
+        # 4. Jellyfin admin username (premier admin trouvé)
+        users = self.jellyfin.extract_users()
+        for user in users:
+            if user.get('is_administrator'):
+                credentials['jellyfin_admin_username'] = user.get('username')
+                break
+
+        # Sauvegarder dans Supabase
+        try:
+            self.supabase.table('setup_credentials').upsert(
+                credentials,
+                on_conflict='device_id'
+            ).execute()
+            logger.info("Setup credentials backed up successfully")
+            return 1
+        except Exception as e:
+            logger.error(f"Error backing up setup credentials: {e}")
+            return 0
+
     def run_backup(self) -> Dict:
         """Exécute une sauvegarde complète"""
         start_time = datetime.utcnow()
@@ -698,6 +795,7 @@ class SupabazarrBackup:
             results['users_count'] = self.backup_jellyfin_users()
             self.backup_quality_profiles()
             self.backup_service_configs()
+            self.backup_setup_credentials()
 
         except Exception as e:
             results['status'] = 'failed'
