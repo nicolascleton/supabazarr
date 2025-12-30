@@ -396,7 +396,20 @@ def sync_jellyfin_item_to_supabase(item: Dict, media_type: str) -> bool:
         else:
             quality = None
 
-        # Build comprehensive media record
+        # Calculate watch progress percentage
+        duration_ticks = item.get('RunTimeTicks', 0)
+        progress_ticks = user_data.get('PlaybackPositionTicks', 0)
+        watch_progress_percent = (progress_ticks / duration_ticks * 100) if duration_ticks > 0 else 0
+
+        # Extract trailers
+        trailers = item.get('RemoteTrailers', [])
+        trailer_url = trailers[0].get('Url') if trailers else None
+
+        # Extract tagline
+        taglines = item.get('Taglines', [])
+        tagline = taglines[0] if taglines else None
+
+        # Build comprehensive media record with ALL data for community features
         media_data = {
             'media_type': media_type,
             'title': item.get('Name', 'Unknown'),
@@ -414,7 +427,7 @@ def sync_jellyfin_item_to_supabase(item: Dict, media_type: str) -> bool:
             # File info
             'file_path': item.get('Path'),
             'file_size': first_source.get('Size'),
-            'duration_minutes': int(item.get('RunTimeTicks', 0) / 600000000) if item.get('RunTimeTicks') else None,
+            'duration_minutes': int(duration_ticks / 600000000) if duration_ticks else None,
 
             # Quality
             'quality': quality,
@@ -428,27 +441,42 @@ def sync_jellyfin_item_to_supabase(item: Dict, media_type: str) -> bool:
             'director': ', '.join(directors) if directors else None,
             'studio': studios[0] if studios else None,
 
-            # Ratings
-            'rating': item.get('CommunityRating'),
-
             # Images - ALL available
             'poster_url': f"{JELLYFIN_URL}/Items/{item.get('Id')}/Images/Primary?api_key={JELLYFIN_API_KEY}" if item.get('ImageTags', {}).get('Primary') else None,
             'backdrop_url': f"{JELLYFIN_URL}/Items/{item.get('Id')}/Images/Backdrop?api_key={JELLYFIN_API_KEY}" if item.get('BackdropImageTags') else None,
             'thumbnail_url': f"{JELLYFIN_URL}/Items/{item.get('Id')}/Images/Thumb?api_key={JELLYFIN_API_KEY}" if item.get('ImageTags', {}).get('Thumb') else None,
 
-            # Watch status
+            # ========== WATCH STATUS (CRITICAL FOR COMMUNITY) ==========
             'status': 'watched' if user_data.get('Played') else 'available',
             'watched': user_data.get('Played', False),
-            'watched_at': user_data.get('LastPlayedDate'),
-            'watch_progress': int(user_data.get('PlaybackPositionTicks', 0) / 10000000) if user_data.get('PlaybackPositionTicks') else 0,
+            'watched_at': user_data.get('LastPlayedDate') if user_data.get('Played') else None,
+            'last_played_at': user_data.get('LastPlayedDate'),  # Even if not fully watched
+            'watch_progress': int(progress_ticks / 10000000) if progress_ticks else 0,  # In seconds
+            'watch_progress_percent': round(watch_progress_percent, 2),  # 0-100%
+            'play_count': user_data.get('PlayCount', 0),  # Number of times played
             'favorite': user_data.get('IsFavorite', False),
 
-            # Dates
-            'release_date': item.get('PremiereDate', '').split('T')[0] if item.get('PremiereDate') else None,
+            # ========== RATINGS (FOR RECOMMENDATIONS) ==========
+            'community_rating': item.get('CommunityRating'),  # TMDB/IMDB rating
+            'critic_rating': item.get('CriticRating'),  # Rotten Tomatoes %
+            'rating': item.get('CommunityRating'),  # Legacy field
 
-            # FULL metadata JSONB - everything else
+            # ========== CLASSIFICATION ==========
+            'age_rating': item.get('OfficialRating'),  # PG-13, R, TV-MA, etc.
+
+            # ========== EXTRA INFO ==========
+            'tagline': tagline,
+            'trailer_url': trailer_url,
+            'production_companies': studios if studios else None,
+
+            # ========== DATES ==========
+            'release_date': item.get('PremiereDate', '').split('T')[0] if item.get('PremiereDate') else None,
+            'jellyfin_added_at': item.get('DateCreated'),  # When added to Jellyfin
+            'last_sync_at': datetime.utcnow().isoformat(),  # Current sync time
+
+            # ========== FULL METADATA JSONB ==========
             'metadata': {
-                # Media streams details
+                # Media streams details (video, audio, subtitles)
                 'streams': streams_info,
 
                 # Jellyfin specific
@@ -458,40 +486,52 @@ def sync_jellyfin_item_to_supabase(item: Dict, media_type: str) -> bool:
                     'parent_id': item.get('ParentId'),
                     'date_created': item.get('DateCreated'),
                     'sort_name': item.get('SortName'),
-                    'play_count': user_data.get('PlayCount', 0),
-                    'is_favorite': user_data.get('IsFavorite', False),
                     'has_subtitles': item.get('HasSubtitles', False),
                 },
 
-                # Crew
+                # Full crew info
                 'crew': {
                     'directors': directors,
                     'writers': writers,
                     'all_actors': actors,
                 },
 
-                # Additional info
+                # All studios
                 'studios': studios,
                 'tags': tags,
-                'taglines': item.get('Taglines', []),
-                'official_rating': item.get('OfficialRating'),  # MPAA rating
-                'critic_rating': item.get('CriticRating'),
+                'all_taglines': taglines,
 
-                # External URLs
+                # All external URLs (IMDB, TMDB, etc.)
                 'external_urls': item.get('ExternalUrls', []),
 
-                # Trailers
-                'trailers': [t.get('Url') for t in item.get('RemoteTrailers', [])],
+                # All trailers
+                'all_trailers': [t.get('Url') for t in trailers],
                 'has_local_trailer': item.get('HasLocalTrailer', False),
 
-                # Technical
+                # Technical details
                 'is_hd': streams_info.get('is_hd'),
                 'is_4k': streams_info.get('is_4k'),
                 'aspect_ratio': streams_info.get('video', {}).get('aspect_ratio'),
                 'resolution': f"{streams_info.get('video', {}).get('width')}x{streams_info.get('video', {}).get('height')}" if streams_info.get('video', {}).get('width') else None,
+                'video_profile': streams_info.get('video', {}).get('profile'),
+                'hdr_type': streams_info.get('video', {}).get('hdr'),
+                'bit_depth': streams_info.get('video', {}).get('bit_depth'),
 
-                # Provider IDs (all of them)
+                # Audio tracks details
+                'audio_tracks': streams_info.get('audio', []),
+                'subtitle_tracks': streams_info.get('subtitles', []),
+
+                # All provider IDs
                 'provider_ids': provider_ids,
+
+                # User data snapshot
+                'user_data': {
+                    'play_count': user_data.get('PlayCount', 0),
+                    'is_favorite': user_data.get('IsFavorite', False),
+                    'played': user_data.get('Played', False),
+                    'playback_position_ticks': progress_ticks,
+                    'last_played_date': user_data.get('LastPlayedDate'),
+                },
             }
         }
 
