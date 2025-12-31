@@ -14,9 +14,9 @@ COPY templates/ /app/templates/
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_ENV=production
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8383/health || exit 1
+# Health check (using python instead of curl for slim image)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8383/health')" || exit 1
 
 # Expose port
 EXPOSE 8383
